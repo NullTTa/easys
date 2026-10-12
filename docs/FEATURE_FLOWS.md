@@ -1,124 +1,111 @@
 # 기능 흐름
 
-코드에서 확인한 흐름만 그렸습니다. 각 흐름 끝의 **검증** 줄은 2026-10-12 실제 구동 결과입니다.
+사용자가 기능을 쓰는 순서대로 정리했습니다. 각 기능 끝에 실제로 실행해서 **확인한 부분**과 **아직 확인하지 못한 부분**을 적었습니다 (2026-10-12 기준).
 
-## 1. AI 챗봇
+---
+
+## 1. AI 챗봇에게 묻기
+
+1. 사용자가 챗봇 창에 질문을 입력합니다.
+2. 로그인하지 않은 사용자는 3번까지만 물어볼 수 있습니다. 그 뒤로는 회원가입 버튼이 나옵니다.
+3. 서버가 AI에게 보내기 전에 질문 종류를 먼저 나눕니다.
+   - **페이지 이동 요청** ("멘토링 페이지로 가줘") → AI 없이 안내 문구와 이동 버튼을 보냅니다.
+   - **정답이 DB에 있는 질문** ("내 일정 알려줘", "인기 방송 뭐야") → AI 없이 DB에서 찾아 답합니다.
+   - **막연한 질문** ("뭘 배워야 할지 모르겠어") → 정해 둔 안내 문구로 되묻습니다.
+   - **그 밖의 질문** → 서비스 설명과 최근 대화를 함께 붙여 AI(Ollama `qwen2.5:3b`)에게 보냅니다.
+4. AI 답변에 한자나 일본어가 섞이면 걸러 냅니다.
+5. 대화를 Redis에 저장해서 다음 질문 때 앞의 대화를 기억합니다.
 
 ```mermaid
 flowchart TD
-    Q["사용자 질문<br/>POST /api/ai/chat"] --> G{"비로그인 무료 횟수<br/>남았나?"}
-    G -- "아니오" --> SU["회원가입 유도 + SIGNUP 버튼"]
-    G -- "예" --> C["FeatureIntentClassifier<br/>의도 분류"]
-    C -->|"탐색형 질문<br/>(뭘 배워야 할지 모르겠어)"| F1["고정 안내 응답<br/>(LLM 호출 없음)"]
-    C -->|"기능 + 이동 요청<br/>(멘토링 페이지로 이동시켜줘)"| F2["안내 문구 + NAVIGATION 액션"]
-    C -->|"내 일정 / 인기 방송 등"| F3["DB 조회 결과로 응답<br/>(LLM 호출 없음)"]
-    C -->|"서비스 소개 / 기능 설명"| L1["시스템 프롬프트 + 서비스 지식<br/>+ Redis 최근 대화"]
-    C -->|"일반·학습 질문"| L2["시스템 프롬프트<br/>(학습 문제 출제는 대화 기록 제외)"]
-    L1 --> O["Ollama /api/chat<br/>qwen2.5:3b"]
-    L2 --> O
-    O --> P["후처리<br/>(한자·가나 섞임 필터 등)"]
-    P --> R["응답 + actions"]
-    F1 --> R
-    F2 --> R
-    F3 --> R
-    R --> S["Redis에 대화 저장<br/>(최대 턴 수·TTL)"]
+    Q["질문 입력"] --> C{"질문 종류 분류"}
+    C -->|"페이지 이동"| A1["이동 버튼"]
+    C -->|"DB에 답이 있음"| A2["DB 조회 결과"]
+    C -->|"막연한 질문"| A3["정해 둔 안내"]
+    C -->|"그 밖의 질문"| AI["Ollama에 질문"]
+    AI --> F["답변 다듬기"]
+    A1 --> R["답변 표시"]
+    A2 --> R
+    A3 --> R
+    F --> R
 ```
 
-- 오타("멪토링")는 자모 단위 편집거리로 찾고, `confirmTypo=true`로 사용자에게 확인을 받습니다.
-- 페이지 이동 버튼은 `ActionDto { type: NAVIGATION, target: MENTORING }` 형태입니다. 실제 경로는 프론트엔드가 `target`으로 정합니다.
+- "멪토링"처럼 오타가 있으면 "혹시 '멘토링'을 말씀하신 건가요?"라고 확인합니다.
+- 이동 버튼에는 주소 대신 목적지 이름(`MENTORING` 등)만 담습니다. 실제 주소는 화면 코드가 정합니다. AI가 없는 주소를 만들어 낼 수 없게 하려는 것입니다.
 
-**검증:** 서비스 소개, 이동 버튼 클릭 → `/mentor` 이동, 오타 확인, 탐색형 고정 안내, 내 일정 조회, 비로그인 3회 제한을 확인했습니다.
+**확인:** 서비스 소개, 이동 버튼으로 `/mentor` 이동, 오타 확인, 막연한 질문 안내, 내 일정 조회, 비로그인 3회 제한
 
-## 2. 멘토링: 신청 → 승인 → 결제 → 일정 저장
+---
+
+## 2. 멘토링 신청부터 일정 저장까지
+
+1. **멘토 등록:** 멘토가 프로필을 만들고, 상담 가능한 날짜와 시간을 넣어 멘토링을 올립니다.
+2. **신청:** 배우고 싶은 사람이 날짜를 골라 신청합니다. 이때 결제 정보가 "결제 대기" 상태로 함께 만들어집니다.
+3. **승인 또는 거절:** 멘토가 승인하면 신청자에게 "결제를 진행해주세요" 알림이 갑니다. 거절하면 결제가 취소됩니다.
+4. **결제:** 신청자가 결제창에서 결제합니다. 서버는 주문자와 금액이 맞는지 확인한 뒤 TossPayments에 승인을 요청합니다.
+5. **일정 저장:** 결제가 끝나면 멘토와 신청자 **두 사람의 캘린더에 일정이 들어가고**, 두 사람에게 결제 완료 알림이 갑니다.
+6. **완료와 후기:** 결제가 끝난 상담은 신청자가 완료 처리하고 후기를 남깁니다.
 
 ```mermaid
 sequenceDiagram
-    actor Mentee as 신청자
-    actor Mentor as 멘토
-    participant BE as Spring Boot
+    actor 신청자
+    actor 멘토
+    participant 서버
     participant Toss as TossPayments
-    Mentor->>BE: POST /mentor (멘토 프로필), POST /mentor/offerings (날짜별 시간대)
-    Mentee->>BE: POST /mentor/reservation/{mentorId}
-    BE-->>Mentee: 예약 PENDING + 결제 정보 READY 생성
-    Mentor->>BE: PUT /mentor/reservation/{id}/approve
-    BE-->>Mentee: 상태 APPROVED + 알림 "결제를 진행해주세요"
-    Mentee->>Toss: 결제창 (테스트)
-    Toss-->>Mentee: paymentKey, orderId, amount
-    Mentee->>BE: POST /payments/confirm
-    BE->>BE: 주문 소유자 확인, 금액이 DB 값과 같은지 확인
-    BE->>Toss: POST /v1/payments/confirm (시크릿 키는 서버에만)
-    Toss-->>BE: 승인 결과
-    BE->>BE: onMentoringPaymentConfirmed() → 멘토·신청자 캘린더에 일정 생성
-    BE-->>Mentor: 결제 완료 알림
-    BE-->>Mentee: 결제 완료 알림
-    Mentee->>BE: PUT /mentor/reservation/{id}/complete (결제 PAID인 예약만)
-    Mentee->>BE: POST /mentor/reviews (후기)
+    신청자->>서버: 멘토링 신청
+    멘토->>서버: 승인
+    서버-->>신청자: 알림 "결제를 진행해주세요"
+    신청자->>Toss: 결제창에서 결제
+    신청자->>서버: 결제 확인 요청
+    서버->>서버: 주문자·금액 확인
+    서버->>Toss: 결제 승인 요청
+    서버->>서버: 두 사람 캘린더에 일정 저장
+    서버-->>멘토: 결제 완료 알림
+    서버-->>신청자: 결제 완료 알림
 ```
 
-- **거절** (`PUT .../reject`): 결제를 취소하고, 이미 만든 일정이 있으면 지웁니다.
-- 승인(`APPROVED`) 전에는 결제를 확정할 수 없습니다.
-- 완료 처리는 결제가 끝난 예약에 대해 신청자가 합니다. 코드 주석상 시연을 위해 상담 날짜를 기다리지 않도록 한 설계입니다.
+- 승인되기 전에는 결제할 수 없습니다.
+- 상담 중에는 1:1 채팅을 합니다 (4번 항목).
 
-**검증:** 멘토 프로필·멘토링 등록 → 신청 → 승인 → 결제 대기(`READY`) 화면까지 확인했습니다. 금액 변조(1원)와 다른 사람 주문 승인 시도가 Toss 호출 전에 거부되는 것도 확인했습니다. Toss 실제 승인, 그 뒤 일정 생성, 완료·후기는 **미검증**입니다.
+**확인:** 멘토 등록 → 멘토링 등록 → 신청 → 승인 → 결제 대기. 금액을 바꾼 요청과 다른 사람의 결제 요청은 거절됨
+**아직 확인하지 못함:** 실제 결제 승인, 결제 후 일정 저장, 완료와 후기
 
-## 3. 스터디카페 예약 ↔ 캘린더
+---
 
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: 예약 생성
-    PENDING --> PAID: Toss 결제 승인 (onStudyPaymentConfirmed)
-    PAID --> CONFIRMED: 관리자 승인 (approveReservation)
-    CONFIRMED --> CANCELLED: 관리자 취소 → 일정 삭제
-    PAID --> CANCELLED: 관리자 취소
-    PENDING --> CANCELLED: 사용자 취소
-    note right of CONFIRMED
-        개인 예약 → 개인 캘린더 일정
-        스터디 예약 → 스터디 그룹 일정
-        + 참여자 알림·이메일
-    end note
-```
+## 3. 스터디카페 예약과 캘린더
 
-- 일정 생성은 `ReservationService.confirmReservationAndCreateCalendar()`에서 이루어집니다.
-- 결제 승인 전에 결제 기한(`assertPaymentDeadlineNotPassed`)을 확인합니다.
+1. 스터디룸과 시간을 골라 예약합니다. (예약 대기)
+2. 결제합니다. (결제 완료)
+3. 관리자가 승인합니다. (예약 확정)
+4. 확정되면 일정이 캘린더에 들어갑니다. 혼자 한 예약은 **내 캘린더**에, 스터디 모임으로 한 예약은 **모임 일정**에 들어가고 참여자에게 알림이 갑니다.
+5. 관리자가 취소하면 일정도 지워집니다.
 
-**검증:** 스터디룸 목록 화면만 확인했습니다. 예약 → 결제 → 승인 → 일정 생성은 **미검증**입니다.
+예약과 관리자 승인 기능은 팀원이 만들었고, 4~5번의 일정 연결은 제가 만들었습니다.
 
-## 4. 스트리밍 미니 캘린더
+**확인:** 스터디룸 목록 화면
+**아직 확인하지 못함:** 예약 → 결제 → 승인 → 일정 저장 전체 과정
 
-```mermaid
-sequenceDiagram
-    actor Host as 방장
-    actor Viewer as 시청자
-    participant BE as Spring Boot
-    participant WS as WebSocket /signal
-    Host->>BE: POST /api/calendar/personal (streamingRoomId = 방 ID)
-    Host->>WS: { type: "schedule-updated" }
-    WS-->>Viewer: 같은 방 사용자에게 전달
-    Viewer->>BE: GET /api/calendar/personal/room/{roomId}
-    Viewer->>BE: POST /api/calendar/personal ("[방송]" 사본, streamingRoomId 없음)
-    Viewer->>BE: DELETE /api/calendar/personal/{copyId} (사본만 취소)
-```
+---
 
-**검증:** 방장 화면에서 방 일정 등록 후 해당 날짜 표시(REC)를 확인했습니다. 시청자 화면과 실시간 갱신은 **미검증**입니다.
+## 4. 멘토링 1:1 채팅
 
-## 5. 멘토링 실시간 채팅과 알림
+1. 채팅 화면을 열면 그 예약의 채팅방을 구독합니다. 서버는 이 사람이 그 예약의 멘토나 신청자인지 확인하고, 아니면 막습니다.
+2. 메시지를 보내면 서버가 먼저 DB에 저장합니다.
+3. 서버가 같은 채팅방을 보고 있는 상대방에게 바로 전달합니다 (STOMP).
+4. 상대방에게 새 메시지 알림도 보냅니다.
 
-```mermaid
-sequenceDiagram
-    actor A as 멘토 또는 신청자
-    actor B as 상대방
-    participant BE as Spring Boot
-    participant Broker as STOMP Simple Broker
-    B->>Broker: SUBSCRIBE /topic/mentoring/{reservationId}
-    Broker->>BE: 구독 가로채기 → 예약 참여자인지 확인 (assertParticipant)
-    A->>BE: POST /mentor/reservation/{id}/chat/messages
-    BE->>BE: 메시지 저장
-    BE->>Broker: convertAndSend /topic/mentoring/{id}
-    Broker-->>B: 새 메시지
-    BE-->>B: 알림 MENTORING_CHAT_MESSAGE
-```
+**아직 확인하지 못함:** 실제 메시지 주고받기와 알림 표시 (코드 흐름만 확인)
 
-- 멘토링 알림 종류: `MENTORING_RESERVATION_APPROVED`, `MENTORING_PAYMENT_COMPLETED`, `MENTORING_CHAT_MESSAGE`
-- 알림 저장·조회 API와 헤더 알림 벨은 팀원이 만들었고, 멘토링 이벤트에서 알림을 보내는 부분을 본인이 구현했습니다.
+---
 
-**검증:** 코드 경로만 확인했습니다. 실제 송수신과 알림 표시는 **미검증**입니다.
+## 5. 방송방 미니 캘린더
+
+1. 방장이 방송방의 미니 캘린더를 열고 날짜를 골라 방송 일정을 등록합니다.
+2. 일정은 방장의 캘린더에 "이 방의 일정"으로 저장됩니다.
+3. 같은 방에 있는 사람들에게 "일정이 바뀌었다"는 신호를 보내서, 모두의 미니 캘린더가 새로고침됩니다.
+4. 시청자는 그 일정을 자기 캘린더에 복사해 넣거나, 넣은 것을 취소할 수 있습니다. 방장의 원래 일정에는 영향이 없습니다.
+
+미니 캘린더의 처음 화면 틀과 방송방 페이지는 팀원이 만들었고, 일정 저장·조회와 화면 연결은 제가 만들었습니다.
+
+**확인:** 방장 화면에서 이번 달로 열리고, 등록한 일정이 해당 날짜에 표시됨
+**아직 확인하지 못함:** 시청자 화면, 여러 명에게 동시에 반영되는지
