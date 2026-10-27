@@ -6,6 +6,12 @@
 ![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=flat-square&logo=mysql&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-qwen2.5:3b-000000?style=flat-square&logo=ollama&logoColor=white)
 
+[![Live Demo](https://img.shields.io/badge/🟢_Live_Demo-배포_중-16A34A?style=for-the-badge)](https://easys.3-34-197-34.sslip.io)
+[![Notion](https://img.shields.io/badge/Notion-프로젝트_정리-000000?style=for-the-badge&logo=notion&logoColor=white)](https://scrawny-catfish-f6c.notion.site/EASYS-3ff70177d2b4805cb796cdcad9beeef8)
+[![Profile](https://img.shields.io/badge/GitHub-NullTTa-181717?style=for-the-badge&logo=github)](https://github.com/NullTTa)
+
+**[서비스 바로가기](https://easys.3-34-197-34.sslip.io)** · [테스트 계정](#서비스-바로-써-보기) · [노션 정리](https://scrawny-catfish-f6c.notion.site/EASYS-3ff70177d2b4805cb796cdcad9beeef8) · [포트폴리오](https://scrawny-catfish-f6c.notion.site/14f6a35562534556beb1982f741cf0be)
+
 **공부에 필요한 것들을 한곳에 모은 학습 플랫폼입니다.**
 멘토에게 1:1로 질문하고, 스터디카페를 예약하고, 화상으로 함께 공부하고, 그 일정을 캘린더에서 관리할 수 있습니다.
 사이트 사용법이 헷갈리면 AI 챗봇에게 물어보면 됩니다. 챗봇이 기능을 설명하고 해당 페이지로 바로 이동시켜 줍니다.
@@ -20,6 +26,21 @@
 | 원본 저장소 | [lj8888151214-commits/easys](https://github.com/lj8888151214-commits/easys) (팀 전체 커밋 기록) |
 
 이 저장소는 팀 프로젝트 코드를 제 포트폴리오용으로 옮겨 정리한 것입니다. 정리하면서 바꾼 내용은 [맨 아래](#이-저장소에-대해)에 적었습니다.
+
+---
+
+## 서비스 바로 써 보기
+
+AWS에 직접 배포해 두었습니다. 👉 **https://easys.3-34-197-34.sslip.io**
+
+> 🔑 **테스트 계정 (관리자 권한)**
+> - 아이디: `sk05ek@naver.com`
+> - 비밀번호: `1234qwer!`
+>
+> 채용 담당자분들이 관리자 화면까지 바로 보실 수 있도록 열어 둔 공용 계정입니다. 둘러보실 때 기존 데이터 삭제는 삼가 주세요.
+
+- 결제는 Toss Payments **테스트 모드**라 실제 돈이 나가지 않습니다.
+- 학습용 서버라 데이터가 초기화되거나 잠시 멈출 수 있습니다.
 
 ---
 
@@ -196,7 +217,7 @@ cd frontend && npm ci && npm run dev   # 화면 (http://localhost:5173)
 - 방송방 화면에서 스터디 그룹 일정을 부를 때 필요한 값(`start`)을 빼먹어 400 오류가 납니다. 지금 미니 캘린더는 이 데이터를 쓰지 않습니다.
 - 화면 코드 여러 곳에 서버 주소(`:8080`)가 직접 적혀 있어 설정으로 모아야 합니다.
 - 결제 승인부터 캘린더 등록까지 자동으로 확인하는 테스트가 없습니다.
-- 배포 설정은 아직 없습니다.
+- 배포는 AWS에 직접 했지만, 배포 스크립트와 서버 설정은 이 저장소에 아직 정리하지 못했습니다.
 
 ---
 
