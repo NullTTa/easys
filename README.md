@@ -1,4 +1,9 @@
-# EASYS
+<div align="center">
+
+<img src="https://cdn.jsdelivr.net/gh/NullTTa/NullTTa@main/assets/wave-easys.svg" width="100%" alt="EASYS · 스터디 · 멘토링 · 스트리밍 학습 플랫폼" />
+
+</div>
+
 
 ![Java](https://img.shields.io/badge/Java-25-007396?style=flat-square&logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1-6DB33F?style=flat-square&logo=springboot&logoColor=white)
@@ -240,3 +245,7 @@ cd frontend && npm ci && npm run dev   # 화면 (http://localhost:5173)
 자세한 과정은 [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)에 있습니다.
 
 **상세 문서:** [프로젝트 개요](docs/PROJECT_OVERVIEW.md) · [전체 구조](docs/ARCHITECTURE.md) · [기능 흐름](docs/FEATURE_FLOWS.md) · [트러블슈팅](docs/TROUBLESHOOTING.md)
+
+<br/>
+
+<img src="https://cdn.jsdelivr.net/gh/NullTTa/NullTTa@main/assets/wave-footer.svg" width="100%" alt="" />
